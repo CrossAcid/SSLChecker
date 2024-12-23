@@ -66,8 +66,9 @@ public class Main {
                 // 最终是否需要写入文件
                 executorService.submit(() -> {
                     // 执行检测
-                    SSLChecker sslChecker = new SSLChecker();
-                    String result = sslChecker.run(domain, suggestions, outputPath);
+                    SSLChecker sslChecker;
+                    sslChecker = new SSLChecker();
+                    String result = sslChecker.run(domain, suggestions);
                     if (outputFlg) {
                         BufferedWriter finalWriter;
                         try {
