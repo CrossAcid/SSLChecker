@@ -12,10 +12,12 @@ import java.util.List;
 public class SSLChecker {
 
     protected static String TAB = "  ";
-    protected static StringBuilder supportSSLProtocolsDesc = new StringBuilder();
+    protected StringBuilder supportSSLProtocolsDesc = new StringBuilder();
     public static boolean supportSNIDesc;
 
-    public static String run(String domain, boolean suggestions) {
+    public SSLChecker() {}
+
+    public String run(String domain, boolean suggestions, String outputPatch) {
         StringBuilder result = new StringBuilder();
 
         // 0. 检测支持的SSL协议
@@ -90,7 +92,7 @@ public class SSLChecker {
         return generateResult(domain, result);
     }
 
-    private static void checkProtocolSupport(String domain, String protocol) {
+    private void checkProtocolSupport(String domain, String protocol) {
         try {
             SSLSocketFactory sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
             SSLSocket sslSocket;
@@ -99,18 +101,19 @@ public class SSLChecker {
 
             sslSocket.startHandshake();
 
-            SSLChecker.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" support").append("\n");
+            this.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" support").append("\n");
         } catch (UnknownHostException e) {
             System.err.println("Unknown host: " + domain);
         } catch (IOException e) {
-            SSLChecker.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" not support").append("\n");
+            System.out.println(supportSSLProtocolsDesc);
+            this.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" not support").append("\n");
         }
     }
 
-    public static String generateResult(String domain, StringBuilder result) {
+    public String generateResult(String domain, StringBuilder result) {
 
         result.append("-------------------------------------").append("\n");
-        result.append("检测域名: " + domain).append("\n");
+        result.append("检测域名: ").append(domain).append("\n");
 
         // 1.证书信息
         result.append("证书信息").append("\n");
