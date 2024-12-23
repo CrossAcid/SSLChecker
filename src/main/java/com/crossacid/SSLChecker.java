@@ -3,21 +3,29 @@ package com.crossacid;
 import javax.net.ssl.*;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 
 public class SSLChecker {
 
     protected static String TAB = "  ";
-    protected static StringBuilder supportSSLProtocolsDesc = new StringBuilder();
-    public static boolean supportSNIDesc;
+    protected StringBuilder supportSSLProtocolsDesc = new StringBuilder();
+    public StringBuilder certChainInfo = new StringBuilder();
+    public boolean supportSNIDesc;
 
-    public static String run(String domain, boolean suggestions) {
+    public SSLChecker() {}
+
+    public String run(String domain, boolean suggestions) {
         StringBuilder result = new StringBuilder();
-
         // 0. 检测支持的SSL协议
         List<String> protocolsToTest = Arrays.asList("SSLv3", "TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3");
         for (String protocol : protocolsToTest) {
@@ -70,7 +78,11 @@ public class SSLChecker {
         }
 
         // 2. 证书链信息
-
+        try {
+            checkCertChainInfo(certificates);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
 
         // 3. 协议与套件
 
@@ -90,7 +102,49 @@ public class SSLChecker {
         return generateResult(domain, result);
     }
 
-    private static void checkProtocolSupport(String domain, String protocol) {
+    private void checkCertChainInfo(Certificate[] certificates) throws NoSuchAlgorithmException {
+        System.out.println(certificates.length);
+        for (int i = 0; i < certificates.length; i++) {
+            if (certificates[i] instanceof X509Certificate cert) {
+                this.certChainInfo.append("Certificate ").append(i + 1).append(": ").append("\n");
+                generateCertChainInfo(cert);
+            }
+        }
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        try {
+            tmf.init((KeyStore) null);
+        } catch (KeyStoreException e) {
+            throw new RuntimeException(e);
+        }
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager x509TrustManager) {
+                X509Certificate[] acceptedIssuers = x509TrustManager.getAcceptedIssuers();
+                for (X509Certificate rootCert : acceptedIssuers) {
+                    // 检查根证书是否匹配最后一个中间证书的颁发者并输出根证书
+                    if (rootCert.getSubjectX500Principal().equals(((X509Certificate)certificates[certificates.length - 1]).getIssuerX500Principal())) {
+                        this.certChainInfo.append("Certificate ").append(certificates.length + 1).append(": ").append("\n");
+                        generateCertChainInfo(rootCert);
+                    }
+                }
+            }
+        }
+    }
+
+    private void generateCertChainInfo(X509Certificate certificate) {
+        this.certChainInfo.append("颁发给: ").append(certificate.getSubjectX500Principal()).append("\n");
+        this.certChainInfo.append("颁发者: ").append(certificate.getIssuerX500Principal()).append("\n");
+        this.certChainInfo.append("有效期: ")
+                .append(CertificateUtils.formatDate(certificate.getNotBefore()))
+                .append(" ~ ")
+                .append(CertificateUtils.formatDate(certificate.getNotAfter()))
+                .append(" 剩余 ")
+                .append(TimeUnit.DAYS.convert(Math.abs(certificate.getNotAfter().getTime() - new Date().getTime()), TimeUnit.MILLISECONDS))
+                .append(" 天 ")
+                .append("\n");
+    }
+
+
+    private void checkProtocolSupport(String domain, String protocol) {
         try {
             SSLSocketFactory sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
             SSLSocket sslSocket;
@@ -99,22 +153,20 @@ public class SSLChecker {
 
             sslSocket.startHandshake();
 
-            SSLChecker.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" support").append("\n");
+            this.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" support").append("\n");
         } catch (UnknownHostException e) {
             System.err.println("Unknown host: " + domain);
         } catch (IOException e) {
-            SSLChecker.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" not support").append("\n");
+            this.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" not support").append("\n");
         }
     }
 
-    public static String generateResult(String domain, StringBuilder result) {
+    public String generateResult(String domain, StringBuilder result) {
 
-        result.append("-------------------------------------").append("\n");
-        result.append("检测域名: " + domain).append("\n");
+        result.append("检测域名: ").append(domain).append("\n");
 
         // 1.证书信息
         result.append("证书信息").append("\n");
-
         result.append("通用名称: ").append("").append("\n");
         result.append("颁发者: ").append("").append("\n");
         result.append("启用SNI: ").append(supportSNIDesc).append("\n");
@@ -130,21 +182,18 @@ public class SSLChecker {
         result.append("部门: ").append("").append("\n");
         result.append("备用名称: ").append("").append("\n");
         result.append("\n");
+
         // 2.证书链信息
         result.append("证书链信息: ").append("\n");
+        result.append(certChainInfo).append("\n");
 
-        result.append("\n");
         // 3.协议与套件
         result.append("协议与套件:").append("\n");
         // 3.1 支持协议
-
         result.append(TAB).append("支持协议:").append("\n");
-
         result.append(supportSSLProtocolsDesc).append("\n");
-
         // 3.2 支持套件
         result.append(TAB).append("支持的加密套件:").append("\n");
-
         result.append("\n");
 
         // 4.总结
@@ -152,11 +201,11 @@ public class SSLChecker {
         result.append(TAB).append("是否符合ATS:").append("\n");
         result.append(TAB).append("是否符合PCI DSS:").append("\n");
         result.append(TAB).append("评级:").append("\n");
-
         result.append("\n");
+
         // 5.建议
         result.append("建议:").append("\n");
-
+        System.out.println(result);
         return result.toString();
 
     }

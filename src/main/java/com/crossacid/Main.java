@@ -49,10 +49,8 @@ public class Main {
 
             // 是否需要输出到文件中
             String outputPath = cmd.getOptionValue("o");
-            BufferedWriter writer = null;
-            if (outputPath != null && !outputPath.isEmpty()) {
-                writer = new BufferedWriter(new FileWriter(outputPath));
-            }
+            boolean outputFlg = outputPath != null && !outputPath.isEmpty();
+            // writer =
 
             // 是否需要给出建议
             boolean suggestions = cmd.hasOption("s");
@@ -66,38 +64,36 @@ public class Main {
             // 对每个域名进行检测
             for (String domain : domains) {
                 // 最终是否需要写入文件
-                BufferedWriter finalWriter  = writer;
                 executorService.submit(() -> {
                     // 执行检测
-                    String result = SSLChecker.run(domain, suggestions);
-                    if (finalWriter != null) {
-                        synchronized (finalWriter) {
-                            try {
-//                                System.out.println(result);
-                                assert result != null;
-                                finalWriter.write(result);
-                                finalWriter.newLine();
-                            } catch (IOException e) {
-                                System.err.println("Error writing to file: " + e.getMessage());
-                            }
-                            try {
-                                finalWriter.close();
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
+                    SSLChecker sslChecker;
+                    sslChecker = new SSLChecker();
+                    String result = sslChecker.run(domain, suggestions);
+                    if (outputFlg) {
+                        BufferedWriter finalWriter;
+                        try {
+                            finalWriter = new BufferedWriter(new FileWriter(outputPath +  "\\" +domain + ".txt"));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+
+                        try {
+                            assert result != null;
+                            finalWriter.write(result);
+                            finalWriter.newLine();
+                            finalWriter.close();
+                        } catch (IOException e) {
+                            System.err.println("Error writing to file: " + e.getMessage());
                         }
                     } else {
                         System.out.println(result);
                     }
                 });
             }
-
             executorService.shutdown();
         } catch (ParseException e) {
             System.err.println(e.getMessage());
             formatter.printHelp("java -jar SSLChecker.jar example.com [opts]", options);
-        } catch (IOException e) {
-            System.err.println("Error handling output file: " + e.getMessage());
         }
     }
 
