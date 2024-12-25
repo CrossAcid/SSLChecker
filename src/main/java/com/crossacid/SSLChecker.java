@@ -7,20 +7,45 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 
 public class SSLChecker {
 
     protected static String TAB = "  ";
+    // 通用名称
+    protected String certificateCommonName;
+    // 颁发者名称
+    protected String certificateIssuerName;
+    // 加密算法
+    protected String certificateEncryptionAlgorithm;
+    // 签名算法
+    protected String certificateSigAlgName;
+    // 证书品牌
+    protected String certificateBrand;
+    // 证书类型
+    protected String certificateType;
+    // 开始时间及结束时间
+    protected String certificateStartTime;
+    protected String certificateEndTime;
+    // 证书吊销状态
+    protected String certificateRevokedStatus;
+    // 证书组织机构
+    protected String certificateOrganization;
+    // 部门 Organizational unit
+    protected String certificateOU;
+    // 备用名称 Subject Alternative Name
+    protected List<String> certificateSAN;
+    // 支持的协议
     protected StringBuilder supportSSLProtocolsDesc = new StringBuilder();
-    public StringBuilder certChainInfo = new StringBuilder();
-    public boolean supportSNIDesc;
+    // 证书链信息
+    protected StringBuilder certChainInfo = new StringBuilder();
+    // 是否支持SNI
+    protected boolean supportSNIDesc;
+
 
     public SSLChecker() {}
 
@@ -32,7 +57,7 @@ public class SSLChecker {
             checkProtocolSupport(domain, protocol);
         }
 
-        // 1. 证书预定义
+        // 1. 证书信息获取
         Certificate[] certificates = new Certificate[0];
 
         // 1.1 获取证书信息
@@ -76,6 +101,32 @@ public class SSLChecker {
             System.err.println("No certificate found");
             return null;
         }
+        if (!(certificates[0] instanceof X509Certificate)) {
+            return "Not a X509 Certificate";
+        }
+        // 1.2 证书基本信息
+        certificateCommonName = CertificateUtils.getCommonName(certificates[0], "Subject");
+        certificateIssuerName = CertificateUtils.getCommonName(certificates[0], "Issuer");
+        certificateEncryptionAlgorithm = CertificateUtils.getEncryptionAlgorithm(certificates[0]);
+        certificateSigAlgName = ((X509Certificate) certificates[0]).getSigAlgName();
+        certificateBrand = CertificateUtils.getBrand(certificates[0]);
+        certificateType = CertificateUtils.getType(certificates[0]);
+        certificateStartTime = Utils.formatDate(((X509Certificate)certificates[0]).getNotBefore());
+        certificateEndTime = Utils.formatDate(((X509Certificate)certificates[0]).getNotAfter());
+        try {
+            certificateRevokedStatus = CertificateUtils.getRevokedStatus((X509Certificate) certificates[0], (X509Certificate) certificates[1]);
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+            throw new RuntimeException(e);
+        }
+        certificateOrganization = CertificateUtils.getOrganization(certificates[0]);
+        certificateOU = CertificateUtils.getOrganizationalUnit(certificates[0]);
+        try {
+            certificateSAN = CertificateUtils.getSubjectAlternativeName(certificates[0]);
+        } catch (CertificateParsingException e) {
+            System.err.println(e.getMessage());
+            throw new RuntimeException(e);
+        }
 
         // 2. 证书链信息
         try {
@@ -103,7 +154,6 @@ public class SSLChecker {
     }
 
     private void checkCertChainInfo(Certificate[] certificates) throws NoSuchAlgorithmException {
-        System.out.println(certificates.length);
         for (int i = 0; i < certificates.length; i++) {
             if (certificates[i] instanceof X509Certificate cert) {
                 this.certChainInfo.append("Certificate ").append(i + 1).append(": ").append("\n");
@@ -134,9 +184,9 @@ public class SSLChecker {
         this.certChainInfo.append("颁发给: ").append(certificate.getSubjectX500Principal()).append("\n");
         this.certChainInfo.append("颁发者: ").append(certificate.getIssuerX500Principal()).append("\n");
         this.certChainInfo.append("有效期: ")
-                .append(CertificateUtils.formatDate(certificate.getNotBefore()))
+                .append(Utils.formatDate(certificate.getNotBefore()))
                 .append(" ~ ")
-                .append(CertificateUtils.formatDate(certificate.getNotAfter()))
+                .append(Utils.formatDate(certificate.getNotAfter()))
                 .append(" 剩余 ")
                 .append(TimeUnit.DAYS.convert(Math.abs(certificate.getNotAfter().getTime() - new Date().getTime()), TimeUnit.MILLISECONDS))
                 .append(" 天 ")
@@ -167,20 +217,20 @@ public class SSLChecker {
 
         // 1.证书信息
         result.append("证书信息").append("\n");
-        result.append("通用名称: ").append("").append("\n");
-        result.append("颁发者: ").append("").append("\n");
+        result.append("通用名称: ").append(certificateCommonName).append("\n");
+        result.append("颁发者: ").append(certificateIssuerName).append("\n");
         result.append("启用SNI: ").append(supportSNIDesc).append("\n");
         result.append("弱密钥检测: ").append("").append("\n");
-        result.append("加密算法: ").append("").append("\n");
-        result.append("签名算法: ").append("").append("\n");
-        result.append("证书品牌: ").append("").append("\n");
-        result.append("证书类型: ").append("").append("\n");
-        result.append("开始时间: ").append("").append("\n");
-        result.append("结束时间: ").append("").append("\n");
-        result.append("吊销状态: ").append("").append("\n");
-        result.append("组织机构: ").append("").append("\n");
-        result.append("部门: ").append("").append("\n");
-        result.append("备用名称: ").append("").append("\n");
+        result.append("加密算法: ").append(certificateEncryptionAlgorithm).append("\n");
+        result.append("签名算法: ").append(certificateSigAlgName).append("\n");
+        result.append("证书品牌: ").append(certificateBrand).append("\n");
+        result.append("证书类型: ").append(certificateType).append("\n");
+        result.append("开始时间: ").append(certificateStartTime).append("\n");
+        result.append("结束时间: ").append(certificateEndTime).append("\n");
+        result.append("吊销状态: ").append(certificateRevokedStatus).append("\n");
+        result.append("组织机构: ").append(certificateOrganization).append("\n");
+        result.append("部门: ").append(certificateOU).append("\n");
+        result.append("备用名称: ").append(certificateSAN).append("\n");
         result.append("\n");
 
         // 2.证书链信息
@@ -205,7 +255,6 @@ public class SSLChecker {
 
         // 5.建议
         result.append("建议:").append("\n");
-        System.out.println(result);
         return result.toString();
 
     }
