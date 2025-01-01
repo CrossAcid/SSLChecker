@@ -62,13 +62,21 @@ public class SSLChecker {
     int connectTimeout = 0; // default = infinite
     int readTimeout = 1000;
 
+    int score = 0;
+
+    protected StringBuilder result = new StringBuilder();
+
     public SSLChecker() {}
 
     public String run(String domain, boolean suggestions) {
-        StringBuilder result = new StringBuilder();
         // 0. 检测支持的SSL协议
         for (String protocol : protocolsToTest) {
             checkProtocolSupport(domain, protocol);
+        }
+
+        if (supportSSLProtocols.isEmpty()) {
+            result.append("No SSL protocol supported\n");
+            return result.toString();
         }
 
         // 1. 证书信息获取
@@ -152,8 +160,8 @@ public class SSLChecker {
         // 3. 支持的加密套件
         this.trustManagers = CertificateUtils.getTrustManagers();
         this.keyManagers = CertificateUtils.getKeyManagers();
-        for (String protocol : protocolsToTest) {
-            System.out.println("Checking protocol " + protocol);
+        for (String protocol : supportSSLProtocols) {
+            System.out.println("Checking "+ domain + " with " + protocol);
             checkProtocolSupportCipherSuites(domain, protocol);
         }
 
@@ -162,9 +170,56 @@ public class SSLChecker {
 
 
         // 5. 建议
+        if (suggestions) {
+            System.out.println("Generating suggestions");
+        }
 
+        // 6. 生成结果
+        generateScore();
+        System.out.println(score);
+        return generateResult(domain, this.result);
+    }
 
-        return generateResult(domain, result);
+    private void generateScore() {
+        // 1.协议分数
+        int length = supportSSLProtocols.size();
+        Map<String, Integer> protocolScores = new HashMap<>();
+        protocolScores.put("SSLv3", 50);
+        protocolScores.put("TLSv1", 70);
+        protocolScores.put("TLSv1.1", 80);
+        protocolScores.put("TLSv1.2", 90);
+        protocolScores.put("TLSv1.3", 100);
+
+        int min = 100;
+        int max = 0;
+        for (String protocol : supportSSLProtocols) {
+            if (protocolScores.containsKey(protocol)) {
+                min = min < protocolScores.get(protocol) ? min : protocolScores.get(protocol);
+                max = max > protocolScores.get(protocol) ? max : protocolScores.get(protocol);
+            }
+        }
+        score += (max + min) / 2;
+
+        // 2.交换密钥分数
+
+        // 3.密码套件分数
+
+        // 4.其他分数
+
+        // 5.给出评级
+        if (score >= 80) {
+            result.append("A").append("\n");
+        } else if (score >= 65) {
+            result.append("B").append("\n");
+        } else if (score >= 50) {
+            result.append("C").append("\n");
+        } else if (score >= 35) {
+            result.append("D").append("\n");
+        } else if (score >= 20) {
+            result.append("E").append("\n");
+        } else {
+            result.append("F").append("\n");
+        }
     }
 
     private void checkProtocolSupportCipherSuites(String domain, String protocol) {
