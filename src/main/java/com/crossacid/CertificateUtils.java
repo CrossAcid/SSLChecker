@@ -12,12 +12,14 @@ import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 
 import javax.crypto.interfaces.DHPublicKey;
+import javax.net.ssl.*;
 import java.io.*;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.net.URL;
-import java.security.PublicKey;
-import java.security.Security;
+import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateParsingException;
@@ -143,7 +145,7 @@ public class CertificateUtils {
 
     /**
      *
-     * @param certificate 争输赢
+     * @param certificate 证书
      * @return 返回证书OU
      */
     public static String getOrganizationalUnit(Certificate certificate) {
@@ -312,6 +314,111 @@ public class CertificateUtils {
         } catch (OCSPException e) {
             System.err.println(e.getMessage());
             throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 生成信任管理器
+     * @return TrustManager[] 信任管理器数组
+     */
+    public static TrustManager[] getTrustManagers() {
+        TrustManagerFactory trustManagerFactory;
+        try {
+            trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        } catch (NoSuchAlgorithmException e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException(e);
+        }
+        try {
+            trustManagerFactory.init((KeyStore) null);
+        } catch (KeyStoreException e) {
+            throw new RuntimeException(e);
+        }
+        return trustManagerFactory.getTrustManagers();
+    }
+
+    /**
+     * 生成密钥管理器
+     * @return KeyManager[] 密钥管理器数组
+     */
+    public static KeyManager[] getKeyManagers() {
+        KeyManagerFactory keyManagerFactory = null;
+        try {
+            keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            keyManagerFactory.init(null, null);
+        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
+            throw new RuntimeException(e);
+        }
+        return keyManagerFactory.getKeyManagers();
+    }
+
+    public static class CustomSSLSocketFactory extends javax.net.ssl.SSLSocketFactory {
+        private final String[] _sslEnabledProtocols;
+        private final String[] _sslCipherSuites;
+        private final SSLSocketFactory _base;
+
+        public CustomSSLSocketFactory(SSLSocketFactory base, String[] sslEnabledProtocols, String[] sslCipherSuites) {
+            _base = base;
+            if (null == sslEnabledProtocols)
+                _sslEnabledProtocols = null;
+            else
+                _sslEnabledProtocols = sslEnabledProtocols.clone();
+            if (null == sslCipherSuites || 0 == sslCipherSuites.length)
+                _sslCipherSuites = base.getDefaultCipherSuites();
+            else if (1 == sslCipherSuites.length && "ALL".equalsIgnoreCase(sslCipherSuites[0]))
+                _sslCipherSuites = base.getSupportedCipherSuites();
+            else
+                _sslCipherSuites = sslCipherSuites.clone();
+
+
+        }
+
+        public String[] getDefaultCipherSuites() {
+            return _base.getDefaultCipherSuites();
+        }
+
+        public String[] getSupportedCipherSuites() {
+            return _base.getSupportedCipherSuites();
+        }
+
+        private SSLSocket customize(Socket s) {
+            SSLSocket socket = (SSLSocket) s;
+
+            if (null != _sslEnabledProtocols)
+                socket.setEnabledProtocols(_sslEnabledProtocols);
+
+            socket.setEnabledCipherSuites(_sslCipherSuites);
+
+            return socket;
+        }
+
+        @Override
+        public Socket createSocket(Socket s, String host, int port, boolean autoClose) throws IOException {
+            return customize(_base.createSocket(s, host, port, autoClose));
+        }
+
+        @Override
+        public Socket createSocket(String host, int port) throws IOException {
+            return customize(_base.createSocket(host, port));
+        }
+
+        @Override
+        public Socket createSocket(InetAddress host, int port) throws IOException {
+            return customize(_base.createSocket(host, port));
+        }
+
+        @Override
+        public Socket createSocket(String host, int port, InetAddress localHost, int localPort) throws IOException {
+            return customize(_base.createSocket(host, port, localHost, localPort));
+        }
+
+        @Override
+        public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
+            return customize(_base.createSocket(address, port, localAddress, localPort));
         }
     }
 }
