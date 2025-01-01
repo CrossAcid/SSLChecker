@@ -2,10 +2,10 @@ package com.crossacid;
 
 import javax.net.ssl.*;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.UnknownHostException;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
@@ -45,16 +45,38 @@ public class SSLChecker {
     protected StringBuilder certChainInfo = new StringBuilder();
     // 是否支持SNI
     protected boolean supportSNIDesc;
+    // 需要测试的协议列表
+    protected List<String> protocolsToTest = Arrays.asList("SSLv3", "TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3");
+    protected List<String> supportSSLProtocols = new ArrayList<>();
+    // 加密套件列表
+    protected HashSet<String> cipherSuites = new HashSet<String>();
 
+    // 支持的加密套件列表
+    protected StringBuilder supportCipherSuites = new StringBuilder();
+
+    // 自定义的信任管理器
+    protected TrustManager[] trustManagers;
+    protected KeyManager[] keyManagers;
+
+    // 超时时间设置
+    int connectTimeout = 0; // default = infinite
+    int readTimeout = 1000;
+
+    int score = 0;
+
+    protected StringBuilder result = new StringBuilder();
 
     public SSLChecker() {}
 
     public String run(String domain, boolean suggestions) {
-        StringBuilder result = new StringBuilder();
         // 0. 检测支持的SSL协议
-        List<String> protocolsToTest = Arrays.asList("SSLv3", "TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3");
         for (String protocol : protocolsToTest) {
             checkProtocolSupport(domain, protocol);
+        }
+
+        if (supportSSLProtocols.isEmpty()) {
+            result.append("No SSL protocol supported\n");
+            return result.toString();
         }
 
         // 1. 证书信息获取
@@ -135,25 +157,156 @@ public class SSLChecker {
             throw new RuntimeException(e);
         }
 
-        // 3. 协议与套件
-
-
-        //   3.1 支持协议
-
-
-        //   3.2 支持的加密套件
+        // 3. 支持的加密套件
+        this.trustManagers = CertificateUtils.getTrustManagers();
+        this.keyManagers = CertificateUtils.getKeyManagers();
+        for (String protocol : supportSSLProtocols) {
+            System.out.println("Checking "+ domain + " with " + protocol);
+            checkProtocolSupportCipherSuites(domain, protocol);
+        }
 
 
         // 4. 总结
 
 
         // 5. 建议
+        if (suggestions) {
+            System.out.println("Generating suggestions");
+        }
 
-
-        return generateResult(domain, result);
+        // 6. 生成结果
+        generateScore();
+        System.out.println(score);
+        return generateResult(domain, this.result);
     }
 
-    private void checkCertChainInfo(Certificate[] certificates) throws NoSuchAlgorithmException {
+    private void generateScore() {
+        // 1.协议分数
+        int length = supportSSLProtocols.size();
+        Map<String, Integer> protocolScores = new HashMap<>();
+        protocolScores.put("SSLv3", 50);
+        protocolScores.put("TLSv1", 70);
+        protocolScores.put("TLSv1.1", 80);
+        protocolScores.put("TLSv1.2", 90);
+        protocolScores.put("TLSv1.3", 100);
+
+        int min = 100;
+        int max = 0;
+        for (String protocol : supportSSLProtocols) {
+            if (protocolScores.containsKey(protocol)) {
+                min = min < protocolScores.get(protocol) ? min : protocolScores.get(protocol);
+                max = max > protocolScores.get(protocol) ? max : protocolScores.get(protocol);
+            }
+        }
+        score += (max + min) / 2;
+
+        // 2.交换密钥分数
+
+        // 3.密码套件分数
+
+        // 4.其他分数
+
+        // 5.给出评级
+        if (score >= 80) {
+            result.append("A").append("\n");
+        } else if (score >= 65) {
+            result.append("B").append("\n");
+        } else if (score >= 50) {
+            result.append("C").append("\n");
+        } else if (score >= 35) {
+            result.append("D").append("\n");
+        } else if (score >= 20) {
+            result.append("E").append("\n");
+        } else {
+            result.append("F").append("\n");
+        }
+    }
+
+    private void checkProtocolSupportCipherSuites(String domain, String protocol) {
+        String[] supportedCipherSuites = new String[0];
+        SecureRandom rand = new SecureRandom();
+        try {
+            supportedCipherSuites = getJVMSupportedCipherSuites(protocol, rand);
+        } catch (NoSuchAlgorithmException e) {
+            System.out.println(protocol + " Not supported by client");
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+        cipherSuites.clear();
+        cipherSuites.addAll(Arrays.asList(supportedCipherSuites));
+        if (cipherSuites.isEmpty()) {
+            System.err.println("No overlapping cipher suites found for protocol " + protocol);
+            protocolsToTest.remove(protocol);
+            return;
+        }
+        supportCipherSuites.append(TAB).append(TAB).append(protocol).append(": ").append("\n");
+        for (String cipherSuite : cipherSuites) {
+//            String status = null;
+//            String error = null;
+            SSLSocketFactory sslSocketFactory;
+            try {
+                sslSocketFactory = getSSLSocketFactory(protocol, new String[]{protocol}, new String[]{cipherSuite}, rand, trustManagers, keyManagers);
+            } catch (NoSuchAlgorithmException | KeyManagementException e) {
+//                System.out.println(e.getMessage());
+                throw new RuntimeException(e);
+            }
+            SSLSocket socket = null;
+            InetSocketAddress address = new InetSocketAddress(domain, 443);
+            try {
+                socket = createSSLSocket(address, domain, connectTimeout, readTimeout, sslSocketFactory);
+                socket.startHandshake();
+                SSLSession sess = socket.getSession();
+                assert protocol.equals(sess.getProtocol());
+                assert cipherSuite.equals(sess.getCipherSuite());
+//                status = "Accepted";
+                supportCipherSuites.append(TAB).append(TAB).append(TAB).append(TAB).append(cipherSuite).append(": ").append("\n");
+            } catch (IOException e) {
+//                status = "Failed";
+//                System.out.println(e.getMessage());
+            } finally {
+                if (null != socket) {
+                    try {
+                        socket.close();
+                    } catch (IOException e) {
+//                        error = e.getLocalizedMessage();
+//                        System.out.println(e.getMessage());
+//                        System.out.println(protocol + " " + cipherSuite + " " + status + ": " + error);
+                    }
+                }
+            }
+
+            if (protocolsToTest.isEmpty()) {
+                System.err.println("This client supports none of the requested protocols: "
+                        + List.of(protocolsToTest));
+                System.err.println("Exiting.");
+                System.exit(1);
+            }
+        }
+    }
+
+    private static SSLSocketFactory getSSLSocketFactory(String protocol, String[] sslEnabledProtocols, String[] sslCipherSuites, SecureRandom rand, TrustManager[] trustManagers, KeyManager[] keyManagers) throws NoSuchAlgorithmException, KeyManagementException {
+        SSLContext sslContext = SSLContext.getInstance(protocol);
+        sslContext.init(keyManagers, trustManagers, rand);
+        SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+        if (null != sslEnabledProtocols || null != sslCipherSuites)
+            sslSocketFactory = new CertificateUtils.CustomSSLSocketFactory(sslSocketFactory, sslEnabledProtocols, sslCipherSuites);
+        return sslSocketFactory;
+    }
+
+    private String[] getJVMSupportedCipherSuites(String protocol, SecureRandom rand) throws NoSuchAlgorithmException, KeyManagementException {
+        SSLContext sc = SSLContext.getInstance(protocol);
+        sc.init(null, null, rand);
+        return sc.getSocketFactory().getSupportedCipherSuites();
+    }
+
+    private static SSLSocket createSSLSocket(InetSocketAddress address, String host, int readTimeout, int connectTimeout, SSLSocketFactory sslSocketFactory) throws IOException {
+        Socket sock = new Socket();
+        sock.setSoTimeout(readTimeout);
+        sock.connect(address, connectTimeout);
+        return (SSLSocket) sslSocketFactory.createSocket(sock, host, 443, true);
+    }
+
+    public void checkCertChainInfo(Certificate[] certificates) throws NoSuchAlgorithmException {
         for (int i = 0; i < certificates.length; i++) {
             if (certificates[i] instanceof X509Certificate cert) {
                 this.certChainInfo.append("Certificate ").append(i + 1).append(": ").append("\n");
@@ -194,7 +347,7 @@ public class SSLChecker {
     }
 
 
-    private void checkProtocolSupport(String domain, String protocol) {
+    public void checkProtocolSupport(String domain, String protocol) {
         try {
             SSLSocketFactory sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
             SSLSocket sslSocket;
@@ -203,6 +356,7 @@ public class SSLChecker {
 
             sslSocket.startHandshake();
 
+            this.supportSSLProtocols.add(protocol);
             this.supportSSLProtocolsDesc.append(TAB).append(TAB).append(protocol).append(" support").append("\n");
         } catch (UnknownHostException e) {
             System.err.println("Unknown host: " + domain);
@@ -244,6 +398,7 @@ public class SSLChecker {
         result.append(supportSSLProtocolsDesc).append("\n");
         // 3.2 支持套件
         result.append(TAB).append("支持的加密套件:").append("\n");
+        result.append(supportCipherSuites).append("\n");
         result.append("\n");
 
         // 4.总结
