@@ -1,23 +1,18 @@
 package com.crossacid;
 
-import org.bouncycastle.asn1.ASN1InputStream;
-import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.ASN1Sequence;
-import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.*;
 import org.bouncycastle.asn1.ocsp.OCSPObjectIdentifiers;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.bouncycastle.cert.ocsp.*;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 
 import javax.crypto.interfaces.DHPublicKey;
-import javax.net.ssl.*;
 import java.io.*;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
-import java.net.InetAddress;
-import java.net.Socket;
 import java.net.URL;
 import java.security.*;
 import java.security.cert.Certificate;
@@ -139,8 +134,29 @@ public class CertificateUtils {
      * @return 返回证书机构
      */
     public static String getOrganization(Certificate certificate) {
-        String subject = String.valueOf(((X509Certificate) certificate).getSubjectX500Principal());
-        return subject.replaceAll(".*O=\"([^\"]+)\".*", "$1");
+        String organization = ""; // 去除首尾空格
+
+        try {
+            String subject = String.valueOf(((X509Certificate) certificate).getSubjectX500Principal());
+            String regex = "O=\"([^\"]*)\"|O=([^,]*)";
+            Pattern pattern = Pattern.compile(regex);
+            Matcher matcher = pattern.matcher(subject);
+
+            while (matcher.find()) {
+                // 输出 O= 后面的内容
+                if (matcher.group(1) != null) {
+                    organization = matcher.group(1);
+                } else if (matcher.group(2) != null) {
+                    organization = matcher.group(2);
+                }
+                if (organization != null) {
+                    organization = organization.trim();
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+        return organization;
     }
 
     /**
@@ -185,11 +201,11 @@ public class CertificateUtils {
 
         // 1.获取证书OCSP验证地址
         byte[] aiaExtensionValue = certificate.getExtensionValue("1.3.6.1.5.5.7.1.1");
-        List<String> ocspUrls = new java.util.ArrayList<>();
+        List<String> ocspUrls = new ArrayList<>();
         if (aiaExtensionValue != null) {
             ASN1InputStream asn1InputStream = new ASN1InputStream(new ByteArrayInputStream(aiaExtensionValue));
             ASN1Primitive derObject = asn1InputStream.readObject();
-            byte[] octets = ((org.bouncycastle.asn1.ASN1OctetString) derObject).getOctets();
+            byte[] octets = ((ASN1OctetString) derObject).getOctets();
             ASN1InputStream aiaStream = new ASN1InputStream(new ByteArrayInputStream(octets));
             ASN1Sequence aiaSequence = (ASN1Sequence) aiaStream.readObject();
             AuthorityInformationAccess authorityInfoAccess = AuthorityInformationAccess.getInstance(aiaSequence);
@@ -287,8 +303,14 @@ public class CertificateUtils {
         return new OCSPResp(Utils.inputStreamToArray(in));
     }
 
+    /**
+     *
+     * @param issuerCertificate 颁发者证书
+     * @param serialNumber 序列号
+     * @return OCSPReq
+     */
     private static OCSPReq generateOCSPRequest(X509Certificate issuerCertificate, BigInteger serialNumber) {
-        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+        Security.addProvider(new BouncyCastleProvider());
         CertificateID id;
         try {
             id = new CertificateID(new JcaDigestCalculatorProviderBuilder().build().get(CertificateID.HASH_SHA1),
@@ -317,108 +339,6 @@ public class CertificateUtils {
         }
     }
 
-    /**
-     * 生成信任管理器
-     * @return TrustManager[] 信任管理器数组
-     */
-    public static TrustManager[] getTrustManagers() {
-        TrustManagerFactory trustManagerFactory;
-        try {
-            trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        } catch (NoSuchAlgorithmException e) {
-            System.out.println(e.getMessage());
-            throw new RuntimeException(e);
-        }
-        try {
-            trustManagerFactory.init((KeyStore) null);
-        } catch (KeyStoreException e) {
-            throw new RuntimeException(e);
-        }
-        return trustManagerFactory.getTrustManagers();
-    }
-
-    /**
-     * 生成密钥管理器
-     * @return KeyManager[] 密钥管理器数组
-     */
-    public static KeyManager[] getKeyManagers() {
-        KeyManagerFactory keyManagerFactory = null;
-        try {
-            keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            keyManagerFactory.init(null, null);
-        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
-            throw new RuntimeException(e);
-        }
-        return keyManagerFactory.getKeyManagers();
-    }
-
-    public static class CustomSSLSocketFactory extends javax.net.ssl.SSLSocketFactory {
-        private final String[] _sslEnabledProtocols;
-        private final String[] _sslCipherSuites;
-        private final SSLSocketFactory _base;
-
-        public CustomSSLSocketFactory(SSLSocketFactory base, String[] sslEnabledProtocols, String[] sslCipherSuites) {
-            _base = base;
-            if (null == sslEnabledProtocols)
-                _sslEnabledProtocols = null;
-            else
-                _sslEnabledProtocols = sslEnabledProtocols.clone();
-            if (null == sslCipherSuites || 0 == sslCipherSuites.length)
-                _sslCipherSuites = base.getDefaultCipherSuites();
-            else if (1 == sslCipherSuites.length && "ALL".equalsIgnoreCase(sslCipherSuites[0]))
-                _sslCipherSuites = base.getSupportedCipherSuites();
-            else
-                _sslCipherSuites = sslCipherSuites.clone();
 
 
-        }
-
-        public String[] getDefaultCipherSuites() {
-            return _base.getDefaultCipherSuites();
-        }
-
-        public String[] getSupportedCipherSuites() {
-            return _base.getSupportedCipherSuites();
-        }
-
-        private SSLSocket customize(Socket s) {
-            SSLSocket socket = (SSLSocket) s;
-
-            if (null != _sslEnabledProtocols)
-                socket.setEnabledProtocols(_sslEnabledProtocols);
-
-            socket.setEnabledCipherSuites(_sslCipherSuites);
-
-            return socket;
-        }
-
-        @Override
-        public Socket createSocket(Socket s, String host, int port, boolean autoClose) throws IOException {
-            return customize(_base.createSocket(s, host, port, autoClose));
-        }
-
-        @Override
-        public Socket createSocket(String host, int port) throws IOException {
-            return customize(_base.createSocket(host, port));
-        }
-
-        @Override
-        public Socket createSocket(InetAddress host, int port) throws IOException {
-            return customize(_base.createSocket(host, port));
-        }
-
-        @Override
-        public Socket createSocket(String host, int port, InetAddress localHost, int localPort) throws IOException {
-            return customize(_base.createSocket(host, port, localHost, localPort));
-        }
-
-        @Override
-        public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
-            return customize(_base.createSocket(address, port, localAddress, localPort));
-        }
-    }
 }
