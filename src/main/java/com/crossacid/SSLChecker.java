@@ -63,6 +63,10 @@ public class SSLChecker {
     protected int connectTimeout = 0; // default = infinite
     protected int readTimeout = 1000;
 
+    // 规范
+    protected boolean isConformToATS;
+    protected boolean isConformToPCIDSS;
+
     // 分数计算
     protected int cipherSuitScoreMin = 100;
     protected int cipherSuitScoreMax = 0;
@@ -179,7 +183,11 @@ public class SSLChecker {
 
 
         // 4. 总结
+        // 4.1 ATS检测
+        isConformToATS = checkATS(domain);
 
+        // 4.2 PCI DSS检测
+        isConformToPCIDSS = checkPCIDSS(domain);
 
         // 5. 建议
         if (suggestions) {
@@ -188,6 +196,36 @@ public class SSLChecker {
 
         // 6. 生成结果
         return generateResult(domain, this.result);
+    }
+
+    /**
+     * Trusted certificate
+     * SSL 2.0, SSL 3.0 and TLS 1.0 not supported
+     * Strong private key
+     * 2048+ bits if RSA
+     * 256+ bits if EC
+     * All cipher suites strong
+     * Cipher of 128 bits or stronger
+     * DH parameters 2048+ bits
+     * Export suites are not allowed
+     * Anonymous key exchange suites are not allowed
+     * In addition, it is required that no known vulnerabilities are present. This translates to the following:
+     * Insecure renegotiation not supported
+     * Compression not supported
+     */
+    private boolean checkPCIDSS(String domain) {
+        return false;
+    }
+
+    /**
+     * 支持TLS 1.2或更高版本。
+     * 使用AES-128或AES-256对称加密算法。
+     * 支持正向保密的TLS加密算法套件。
+     * 服务器端的叶证书签名密钥至少为2048位的RSA密钥或至少256位的ECC密钥。
+     * 服务器证书的哈希算法必须为SHA-2，其摘要长度至少为256位（即SHA-256及以上）。
+     */
+    private boolean checkATS(String domain) {
+        return false;
     }
 
     private void generateScore() {
