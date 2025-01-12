@@ -338,7 +338,4 @@ public class CertificateUtils {
             throw new RuntimeException(e);
         }
     }
-
-
-
 }

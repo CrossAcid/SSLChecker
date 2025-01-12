@@ -12,7 +12,7 @@ import java.util.concurrent.Executors;
 public class Main {
 
     // 域名合规性检测
-    private static final String DOMAIN_REGEX = "^(?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.(?!-)[A-Za-z0-9-]{1,63}(?<!-)$";
+    private static final String DOMAIN_REGEX = "^(?!-)([A-Za-z0-9-]{1,63})(?<!-)(\\.[A-Za-z0-9-]{1,63})*$";
 
     public static void main(String[] args) {
         // 设置命令行参数

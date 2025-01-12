@@ -52,8 +52,8 @@ public class CipherSuiteUtils {
     public static int getCipherSuitScore(String protocol, String cipherSuite) {
         int score = 100; // 初始化满分
 
-        // 检查是否为匿名套件
-        if (cipherSuite.contains("ANON")) {
+        // 检查是否为匿名套件 或 导出 套件
+        if (cipherSuite.contains("ANON") || cipherSuite.contains("EXPORT")) {
             score = 0;
         }
 

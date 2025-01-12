@@ -184,13 +184,14 @@ public class SSLChecker {
 
         // 4. 总结
         // 4.1 ATS检测
-        isConformToATS = checkATS(domain);
+        isConformToATS = checkATS();
 
         // 4.2 PCI DSS检测
-        isConformToPCIDSS = checkPCIDSS(domain);
+        isConformToPCIDSS = checkPCIDSS();
 
         // 5. 建议
         if (suggestions) {
+
             System.out.println("Generating suggestions");
         }
 
@@ -199,33 +200,88 @@ public class SSLChecker {
     }
 
     /**
-     * Trusted certificate
-     * SSL 2.0, SSL 3.0 and TLS 1.0 not supported
-     * Strong private key
-     * 2048+ bits if RSA
-     * 256+ bits if EC
-     * All cipher suites strong
-     * Cipher of 128 bits or stronger
-     * DH parameters 2048+ bits
-     * Export suites are not allowed
-     * Anonymous key exchange suites are not allowed
-     * In addition, it is required that no known vulnerabilities are present. This translates to the following:
-     * Insecure renegotiation not supported
-     * Compression not supported
+     * DH parameters 2048+ bits java api不包含该检测
      */
-    private boolean checkPCIDSS(String domain) {
+    private boolean checkPCIDSS() {
+
+        // SSL 2.0, SSL 3.0 and TLS 1.0 不支持
+        for (String protocol : supportSSLProtocols) {
+            if (protocol.equals("SSLv2Hello") || protocol.equals("SSLv3") || protocol.equals("TLSv1")) {
+                return false;
+            }
+        }
+        if (encryptionAlgorithmATSAndPCIDSSStandard()) return false;
+        // 包含弱密钥和导出套件，或密钥长度不够，均不符合PCI DSS标准
+        return Objects.equals(weakCipherSuit, "否") && supportCipherSuites.indexOf("INSECURE") == -1;
+
+        // 不安全的重协商和压缩在TLS 1.2或TLS 1.3中被禁用，故第一步和这一步等价，不再重述
+    }
+
+    private boolean checkATS() {
+        // 支持TLS 1.2或更高版本
+        if (!supportSSLProtocols.contains("TLSv1.2") && !supportSSLProtocols.contains("TLSv1.3")) {
+            System.out.println("1");
+            return false;
+        }
+        // 必须支持以下加密套件之一或更多，即AES-128或AES-256
+        List<String> AESSearchList = List.of("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+                                                    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+                                                    "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384",
+                                                    "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+                                                    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
+                                                    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+                                                    "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+                                                    "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+                                                    "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384",
+                                                    "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
+                                                    "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA");
+        boolean containsAnyAES128OrAES256 = containsAny(supportCipherSuites, AESSearchList);
+        if (!containsAnyAES128OrAES256) {
+            System.out.println("2");
+            return false;
+        }
+        // 正向加密
+        List<String> FSSearchList = List.of("ECDHE", "DHE");
+        boolean containsAnyForwardSecrecy = containsAny(supportCipherSuites, FSSearchList);
+        if (!containsAnyForwardSecrecy) {
+            System.out.println("3");
+            return false;
+        }
+        // 服务器端证书签名密钥至少为2048位的RSA密钥或至少256位的ECC密钥
+        if (encryptionAlgorithmATSAndPCIDSSStandard()) {
+            System.out.println("4");
+            return false;
+        }
+        // 服务器证书的哈希算法必须为SHA-2，其摘要长度至少为256位（即SHA-256及以上）
+        List<String> SigAlgNameSearchList = List.of("SHA256", "SHA384", "SHA512", "SHA512/224", "SHA512/256",
+                                                    "SHA3256", "SHA3384", "SHA3512");
+        return containsAny(new StringBuilder(certificateSigAlgName), SigAlgNameSearchList);
+    }
+
+    private boolean encryptionAlgorithmATSAndPCIDSSStandard() {
+        String[] parts = certificateEncryptionAlgorithm.split(" ");
+        if (parts.length == 3) {
+            if (parts[0].equals("RSA")) {
+                int keySize = Integer.parseInt(parts[1]);
+                return keySize < 2048;
+            } else if (parts[0].equals("EC")) {
+                int keySize = Integer.parseInt(parts[1]);
+                return keySize < 256;
+            } else {
+                return false;
+            }
+        }
         return false;
     }
 
-    /**
-     * 支持TLS 1.2或更高版本。
-     * 使用AES-128或AES-256对称加密算法。
-     * 支持正向保密的TLS加密算法套件。
-     * 服务器端的叶证书签名密钥至少为2048位的RSA密钥或至少256位的ECC密钥。
-     * 服务器证书的哈希算法必须为SHA-2，其摘要长度至少为256位（即SHA-256及以上）。
-     */
-    private boolean checkATS(String domain) {
-        return false;
+    private boolean containsAny(StringBuilder supportCipherSuites, List<String> searchList) {
+        for (String searchString : searchList) {
+            // 使用 indexOf 来检查 StringBuilder 中是否包含该元素
+            if (supportCipherSuites.indexOf(searchString) != -1) {
+                return true;  // 一旦找到匹配的元素，返回 true
+            }
+        }
+        return false;  // 如果没有任何元素匹配，返回 false
     }
 
     private void generateScore() {
@@ -277,6 +333,7 @@ public class SSLChecker {
             try {
                 sslSocketFactory = CipherSuiteUtils.getSSLSocketFactory(protocol, new String[]{protocol}, new String[]{cipherSuite}, rand, trustManagers, keyManagers);
             } catch (NoSuchAlgorithmException | KeyManagementException e) {
+                System.out.println(e.getMessage());
                 throw new RuntimeException(e);
             }
             InetSocketAddress address = new InetSocketAddress(domain, 443);
@@ -294,8 +351,8 @@ public class SSLChecker {
 
                 String cipherSuitJudge = currentScore == 100 ? "" : (currentScore >= 64 ? "WEAK" : "INSECURE");
                 supportCipherSuites.append(TAB).append(TAB).append(TAB).append(TAB).append(cipherSuite).append(" ").append(cipherSuitJudge).append("\n");
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            } catch (IOException ignored) {
+
             }
 
             if (protocolsToTest.isEmpty()) {
@@ -404,8 +461,8 @@ public class SSLChecker {
 
         // 4.总结
         result.append("总结:").append("\n");
-        result.append(TAB).append("是否符合ATS:").append("\n");
-        result.append(TAB).append("是否符合PCI DSS:").append("\n");
+        result.append(TAB).append("是否符合ATS:").append(isConformToATS).append("\n");
+        result.append(TAB).append("是否符合PCI DSS:").append(isConformToPCIDSS).append("\n");
 
         generateScore();
         result.append(TAB).append("评级:").append(score);
