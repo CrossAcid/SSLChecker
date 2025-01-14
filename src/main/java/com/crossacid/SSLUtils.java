@@ -8,7 +8,6 @@ import java.net.Socket;
 import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.text.SimpleDateFormat;
 
 public class SSLUtils {
 
@@ -30,7 +29,7 @@ public class SSLUtils {
     }
 
     public static Certificate[] getCertificatesWithoutValidation(String domain) {
-        X509Certificate[] serverCertificates = null;
+        X509Certificate[] serverCertificates;
         try {
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(null, new TrustManager[]{
@@ -133,20 +132,32 @@ public class SSLUtils {
      * 生成信任管理器
      * @return TrustManager[] 信任管理器数组
      */
-    public static TrustManager[] getTrustManagers() {
-        TrustManagerFactory trustManagerFactory;
-        try {
-            trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        } catch (NoSuchAlgorithmException e) {
-            System.out.println(e.getMessage());
-            throw new RuntimeException(e);
+    public static TrustManager[] getTrustManagers(boolean isT) {
+        if (!isT) {
+            TrustManagerFactory trustManagerFactory;
+            try {
+                trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            } catch (NoSuchAlgorithmException e) {
+                System.out.println(e.getMessage());
+                throw new RuntimeException(e);
+            }
+            try {
+                trustManagerFactory.init((KeyStore) null);
+            } catch (KeyStoreException e) {
+                throw new RuntimeException(e);
+            }
+            return trustManagerFactory.getTrustManagers();
+        } else {
+            return new TrustManager[]{
+                    new X509TrustManager() {
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return null;
+                        }
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                    }
+            };
         }
-        try {
-            trustManagerFactory.init((KeyStore) null);
-        } catch (KeyStoreException e) {
-            throw new RuntimeException(e);
-        }
-        return trustManagerFactory.getTrustManagers();
     }
 
     /**

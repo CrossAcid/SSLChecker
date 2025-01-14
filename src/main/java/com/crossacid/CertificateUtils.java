@@ -238,7 +238,7 @@ public class CertificateUtils {
             return "Check failed";
         }
         if (ocspResponse.getStatus() != OCSPResp.SUCCESSFUL) {  //判断此次连接返回的响应结果
-            System.err.println("Failed to get OCSPResponse");
+            System.err.println(certificate.getSubjectX500Principal() + ": Failed to get OCSPResponse");
             return "Check failed";
         }
         BasicOCSPResp basicResponse;  //获取到BasicOCSPResp

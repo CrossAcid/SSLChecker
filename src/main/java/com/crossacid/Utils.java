@@ -4,6 +4,7 @@ import java.io.*;
 import java.security.SecureRandom;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 
 public class Utils {
 
@@ -56,5 +57,22 @@ public class Utils {
         byte[] nonce = new byte[16]; // 生成16字节的nonce值，可以根据需要调整大小
         random.nextBytes(nonce);
         return nonce;
+    }
+
+    /**
+     *
+     * @param sb 待查询字符串
+     * @param searchList 查询列表
+     * @return 查询列表中是否存在代查询字符串
+     * @description 查询列表中是否存在sb
+     */
+    public static boolean containsAny(StringBuilder sb, List<String> searchList) {
+        for (String searchString : searchList) {
+            // 使用 indexOf 来检查 StringBuilder 中是否包含该元素
+            if (sb.indexOf(searchString) != -1) {
+                return true;  // 一旦找到匹配的元素，返回 true
+            }
+        }
+        return false;  // 如果没有任何元素匹配，返回 false
     }
 }
