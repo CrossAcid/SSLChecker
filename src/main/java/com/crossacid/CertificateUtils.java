@@ -25,6 +25,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -156,7 +157,7 @@ public class CertificateUtils {
         } catch (Exception e) {
             System.out.println(e.getMessage());
         }
-        return organization;
+        return Objects.equals(organization, "") ? "-" : organization;
     }
 
     /**

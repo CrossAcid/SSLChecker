@@ -76,6 +76,7 @@ public class SSLChecker {
 
 
     protected StringBuilder result = new StringBuilder();
+    protected StringBuilder suggestions = new StringBuilder();
 
     protected String critical = "";
 
@@ -89,7 +90,7 @@ public class SSLChecker {
 
         if (supportSSLProtocols.isEmpty()) {
             result.append("No SSL protocol supported\n");
-            return result.toString();
+//            return result.toString();
         }
 
         // 1. 证书信息获取
@@ -115,7 +116,7 @@ public class SSLChecker {
                 certificates = sslSession.getPeerCertificates();
                 supportSNIDesc = true;
             } catch (SSLHandshakeException e) {
-                System.err.println("SNI handshake failed, retrying without SNI: {}" + e.getMessage());
+//                System.err.println("SNI handshake failed, retrying without SNI: " + e.getMessage());
                 supportSNIDesc = false;
 
                 socket = (SSLSocket) factory.createSocket(domain, 443);
@@ -129,7 +130,8 @@ public class SSLChecker {
                 socket.close();
             }
         } catch (IOException e) {
-            System.err.println("IOException: {}" + e.getMessage());
+            System.out.println("Default check failed, retrying with custom trust manager");
+            certificates = SSLUtils.getCertificatesWithoutValidation(domain);
         }
 
         if (certificates.length == 0) {
@@ -155,7 +157,6 @@ public class SSLChecker {
             certificateRevokedStatus = CertificateUtils.getRevokedStatus((X509Certificate) certificates[0], (X509Certificate) certificates[1]);
         } catch (IOException e) {
             System.err.println(e.getMessage());
-            throw new RuntimeException(e);
         }
         certificateOrganization = CertificateUtils.getOrganization(certificates[0]);
         certificateOU = CertificateUtils.getOrganizationalUnit(certificates[0]);
@@ -191,7 +192,6 @@ public class SSLChecker {
 
         // 5. 建议
         if (suggestions) {
-
             System.out.println("Generating suggestions");
         }
 

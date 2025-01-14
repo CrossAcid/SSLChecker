@@ -5,10 +5,10 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.UnrecoverableKeyException;
+import java.security.*;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.text.SimpleDateFormat;
 
 public class SSLUtils {
 
@@ -27,6 +27,37 @@ public class SSLUtils {
         sock.setSoTimeout(readTimeout);
         sock.connect(address, connectTimeout);
         return (SSLSocket) sslSocketFactory.createSocket(sock, host, 443, true);
+    }
+
+    public static Certificate[] getCertificatesWithoutValidation(String domain) {
+        X509Certificate[] serverCertificates = null;
+        try {
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, new TrustManager[]{
+                    new X509TrustManager() {
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return null;
+                        }
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                    }
+            }, new java.security.SecureRandom());
+            // 获取 SSLSocketFactory
+            SSLSocketFactory factory = sslContext.getSocketFactory();
+            SSLSocket socket = (SSLSocket) factory.createSocket(domain, 443);
+
+            // 启动握手
+            socket.startHandshake();
+
+            // 获取 SSL 会话
+            SSLSession session = socket.getSession();
+            serverCertificates = (X509Certificate[]) session.getPeerCertificates();
+
+            socket.close();
+        } catch (NoSuchAlgorithmException | IOException | KeyManagementException e) {
+            throw new RuntimeException(e);
+        }
+        return serverCertificates;
     }
 
     /**
