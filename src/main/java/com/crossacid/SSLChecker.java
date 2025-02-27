@@ -199,7 +199,7 @@ public class SSLChecker {
         }
 
         // 4. 支持的加密套件
-        this.trustManagers = SSLUtils.getTrustManagers(!Objects.equals(critical, ""));
+        this.trustManagers = SSLUtils.getTrustManagers(Objects.equals(critical, "T"));
         this.keyManagers = SSLUtils.getKeyManagers();
         for (String protocol : supportSSLProtocols) {
             System.out.println("Checking "+ domain + " with " + protocol);
@@ -267,7 +267,6 @@ public class SSLChecker {
                                                     "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA");
         boolean containsAnyAES128OrAES256 = Utils.containsAny(supportCipherSuites, AESSearchList);
         if (!containsAnyAES128OrAES256) {
-            System.out.println(2);
             return false;
         }
         // 正向加密
@@ -344,7 +343,7 @@ public class SSLChecker {
      * @param protocol 待检测协议
      * @description 检测该域名对应协议下支持的加密套件并保存
      */
-    private void checkProtocolSupportCipherSuites(String domain, String protocol) {
+    private void  checkProtocolSupportCipherSuites(String domain, String protocol) {
         String[] supportedCipherSuites = new String[0];
         SecureRandom rand = new SecureRandom();
         try {
@@ -588,10 +587,8 @@ public class SSLChecker {
                 result.append("C").append("\n");
             } else if (score >= 35) {
                 result.append("D").append("\n");
-            } else if (score >= 20) {
-                result.append("E").append("\n");
             } else {
-                result.append("F").append("\n");
+                result.append("E").append("\n");
             }
         }
 
