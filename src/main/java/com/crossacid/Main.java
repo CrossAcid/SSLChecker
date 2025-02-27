@@ -56,7 +56,7 @@ public class Main {
             boolean suggestions = cmd.hasOption("s");
 
             // 使用ExecutorService来执行并行任务
-            ExecutorService executorService = Executors.newFixedThreadPool(10); // 最大10个并行任务
+            ExecutorService executorService = Executors.newCachedThreadPool();
 
             // 初始化检测配置
             initConfigurations();
@@ -66,8 +66,7 @@ public class Main {
                 // 最终是否需要写入文件
                 executorService.submit(() -> {
                     // 执行检测
-                    SSLChecker sslChecker;
-                    sslChecker = new SSLChecker();
+                    SSLChecker sslChecker = new SSLChecker();
                     String result = sslChecker.run(domain, suggestions);
                     if (outputFlg) {
                         BufferedWriter finalWriter;

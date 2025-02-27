@@ -68,7 +68,7 @@ public class CipherSuiteUtils {
         }
 
         // 检查是否不使用 AEAD 算法
-        if (!cipherSuite.contains("GCM") && !cipherSuite.contains("CHACHA20") && !cipherSuite.contains("POLY1305")) {
+        if (!cipherSuite.contains("GCM") && !cipherSuite.contains("CHACHA20") && !cipherSuite.contains("POLY1305") && !Objects.equals(protocol, "TLSv1.3")) {
             score = Math.min(score, 80);
         }
 

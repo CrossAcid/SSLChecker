@@ -199,7 +199,7 @@ public class SSLChecker {
         }
 
         // 4. 支持的加密套件
-        this.trustManagers = SSLUtils.getTrustManagers(!Objects.equals(critical, ""));
+        this.trustManagers = SSLUtils.getTrustManagers(Objects.equals(critical, "T"));
         this.keyManagers = SSLUtils.getKeyManagers();
         for (String protocol : supportSSLProtocols) {
             System.out.println("Checking "+ domain + " with " + protocol);
@@ -267,7 +267,6 @@ public class SSLChecker {
                                                     "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA");
         boolean containsAnyAES128OrAES256 = Utils.containsAny(supportCipherSuites, AESSearchList);
         if (!containsAnyAES128OrAES256) {
-            System.out.println(2);
             return false;
         }
         // 正向加密
@@ -344,7 +343,7 @@ public class SSLChecker {
      * @param protocol 待检测协议
      * @description 检测该域名对应协议下支持的加密套件并保存
      */
-    private void checkProtocolSupportCipherSuites(String domain, String protocol) {
+    private void  checkProtocolSupportCipherSuites(String domain, String protocol) {
         String[] supportedCipherSuites = new String[0];
         SecureRandom rand = new SecureRandom();
         try {
@@ -423,17 +422,24 @@ public class SSLChecker {
         } catch (KeyStoreException e) {
             throw new RuntimeException(e);
         }
+        boolean flag = false;
         for (TrustManager tm : tmf.getTrustManagers()) {
             if (tm instanceof X509TrustManager x509TrustManager) {
                 X509Certificate[] acceptedIssuers = x509TrustManager.getAcceptedIssuers();
+
                 for (X509Certificate rootCert : acceptedIssuers) {
                     // 检查根证书是否匹配最后一个中间证书的颁发者并输出根证书
                     if (rootCert.getSubjectX500Principal().equals(((X509Certificate)certificates[certificates.length - 1]).getIssuerX500Principal())) {
                         this.certChainInfo.append("Certificate ").append(certificates.length + 1).append(": ").append("\n");
                         generateCertChainInfo(rootCert, "root");
+                        flag = true;
                     }
                 }
             }
+        }
+        // 在系统的受信证书中无该根证书
+        if (!flag) {
+            suggestions.append(TAB).append(" - ").append("该证书链可能不完整或根证书非可信根证书").append("\n");
         }
     }
 
@@ -493,7 +499,7 @@ public class SSLChecker {
                         public void checkClientTrusted(X509Certificate[] certs, String authType) {}
                         public void checkServerTrusted(X509Certificate[] certs, String authType) {}
                     }
-            }, new java.security.SecureRandom());
+            }, new SecureRandom());
             // 获取 SSLSocketFactory
             SSLSocketFactory factory = sslContext.getSocketFactory();
             SSLSocket socket = (SSLSocket) factory.createSocket(domain, 443);
@@ -581,10 +587,8 @@ public class SSLChecker {
                 result.append("C").append("\n");
             } else if (score >= 35) {
                 result.append("D").append("\n");
-            } else if (score >= 20) {
-                result.append("E").append("\n");
             } else {
-                result.append("F").append("\n");
+                result.append("E").append("\n");
             }
         }
 
