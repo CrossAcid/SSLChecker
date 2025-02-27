@@ -423,17 +423,24 @@ public class SSLChecker {
         } catch (KeyStoreException e) {
             throw new RuntimeException(e);
         }
+        boolean flag = false;
         for (TrustManager tm : tmf.getTrustManagers()) {
             if (tm instanceof X509TrustManager x509TrustManager) {
                 X509Certificate[] acceptedIssuers = x509TrustManager.getAcceptedIssuers();
+
                 for (X509Certificate rootCert : acceptedIssuers) {
                     // 检查根证书是否匹配最后一个中间证书的颁发者并输出根证书
                     if (rootCert.getSubjectX500Principal().equals(((X509Certificate)certificates[certificates.length - 1]).getIssuerX500Principal())) {
                         this.certChainInfo.append("Certificate ").append(certificates.length + 1).append(": ").append("\n");
                         generateCertChainInfo(rootCert, "root");
+                        flag = true;
                     }
                 }
             }
+        }
+        // 在系统的受信证书中无该根证书
+        if (!flag) {
+            suggestions.append(TAB).append(" - ").append("该证书链可能不完整或根证书非可信根证书").append("\n");
         }
     }
 
@@ -493,7 +500,7 @@ public class SSLChecker {
                         public void checkClientTrusted(X509Certificate[] certs, String authType) {}
                         public void checkServerTrusted(X509Certificate[] certs, String authType) {}
                     }
-            }, new java.security.SecureRandom());
+            }, new SecureRandom());
             // 获取 SSLSocketFactory
             SSLSocketFactory factory = sslContext.getSocketFactory();
             SSLSocket socket = (SSLSocket) factory.createSocket(domain, 443);

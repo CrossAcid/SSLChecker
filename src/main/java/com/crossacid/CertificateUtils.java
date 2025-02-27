@@ -283,6 +283,23 @@ public class CertificateUtils {
             return null;
         }
         OCSPReq request = generateOCSPRequest(issuerCertificate, certificate.getSerialNumber());
+        HttpURLConnection con = getHttpURLOCSPConnection(ocspUrl, request);
+        if (con.getResponseCode() / 100 != 2) {
+            throw new IOException("OCSP request failed, HTTP status: " + con.getResponseCode());
+        }
+        // Get Response
+        InputStream in = (InputStream) con.getContent();
+        return new OCSPResp(Utils.inputStreamToArray(in));
+    }
+
+    /**
+     *
+     * @param ocspUrl ocspUrl
+     * @param request ocsp request
+     * @return HttpURLConnection
+     * @throws IOException IOException
+     */
+    private static HttpURLConnection getHttpURLOCSPConnection(String ocspUrl, OCSPReq request) throws IOException {
         byte[] array = request.getEncoded();
         URL url = new URL(ocspUrl);
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
@@ -291,17 +308,12 @@ public class CertificateUtils {
         con.setDoOutput(true);
         con.setConnectTimeout(3000);
         con.setReadTimeout(5000);
-        OutputStream out = con.getOutputStream();
-        DataOutputStream dataOut = new DataOutputStream(new BufferedOutputStream(out));
-        dataOut.write(array);
-        dataOut.flush();
-        dataOut.close();
-        if (con.getResponseCode() / 100 != 2) {
-            System.err.println("Bad ResponseCode");
+        try (OutputStream out = con.getOutputStream()) {
+            DataOutputStream dataOut = new DataOutputStream(new BufferedOutputStream(out));
+            dataOut.write(array);
+            dataOut.flush();
         }
-        // Get Response
-        InputStream in = (InputStream) con.getContent();
-        return new OCSPResp(Utils.inputStreamToArray(in));
+        return con;
     }
 
     /**
