@@ -21,14 +21,14 @@ public class SSLUtils {
      * @return 创建SSLSocket
      * @throws IOException IOException
      */
-    public static SSLSocket createSSLSocket(InetSocketAddress address, String host, int readTimeout, int connectTimeout, SSLSocketFactory sslSocketFactory) throws IOException {
+    public static SSLSocket createSSLSocket(InetSocketAddress address, String host, int port, int readTimeout, int connectTimeout, SSLSocketFactory sslSocketFactory) throws IOException {
         Socket sock = new Socket();
         sock.setSoTimeout(readTimeout);
         sock.connect(address, connectTimeout);
-        return (SSLSocket) sslSocketFactory.createSocket(sock, host, 443, true);
+        return (SSLSocket) sslSocketFactory.createSocket(sock, host, port, true);
     }
 
-    public static Certificate[] getCertificatesWithoutValidation(String domain) {
+    public static Certificate[] getCertificatesWithoutValidation(String domain, int port) {
         X509Certificate[] serverCertificates;
         try {
             SSLContext sslContext = SSLContext.getInstance("TLS");
@@ -43,7 +43,10 @@ public class SSLUtils {
             }, new java.security.SecureRandom());
             // 获取 SSLSocketFactory
             SSLSocketFactory factory = sslContext.getSocketFactory();
-            SSLSocket socket = (SSLSocket) factory.createSocket(domain, 443);
+            SSLSocket socket = (SSLSocket) factory.createSocket(domain, port);
+
+            // 启用所有加密套件
+            socket.setEnabledCipherSuites(socket.getSupportedCipherSuites());
 
             // 启动握手
             socket.startHandshake();
@@ -132,8 +135,8 @@ public class SSLUtils {
      * 生成信任管理器
      * @return TrustManager[] 信任管理器数组
      */
-    public static TrustManager[] getTrustManagers(boolean isT) {
-        if (!isT) {
+    public static TrustManager[] getTrustManagers(boolean isCustomized) {
+        if (!isCustomized) {
             TrustManagerFactory trustManagerFactory;
             try {
                 trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());

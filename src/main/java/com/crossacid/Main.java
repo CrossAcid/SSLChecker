@@ -64,10 +64,19 @@ public class Main {
             // 对每个域名进行检测
             for (String domain : domains) {
                 // 最终是否需要写入文件
-                executorService.submit(() -> {
+                executorService.execute(() -> {
                     // 执行检测
                     SSLChecker sslChecker = new SSLChecker();
-                    String result = sslChecker.run(domain, suggestions);
+                    String domainPart;
+                    String portPart = "443";
+                    int colonIndex = domain.lastIndexOf(':');
+                    if (colonIndex != -1) {
+                        domainPart = domain.substring(0, colonIndex);
+                        portPart = domain.substring(colonIndex + 1);
+                    } else {
+                        domainPart = domain;
+                    }
+                    String result = sslChecker.check(domainPart, Integer.parseInt(portPart), suggestions);
                     if (outputFlg) {
                         BufferedWriter finalWriter;
                         try {
@@ -122,8 +131,19 @@ public class Main {
             return false;
         }
 
+        // 分离域名和端口号
+        String domainPart;
+        String portPart = null;
+        int colonIndex = domain.lastIndexOf(':');
+        if (colonIndex != -1) {
+            domainPart = domain.substring(0, colonIndex);
+            portPart = domain.substring(colonIndex + 1);
+        } else {
+            domainPart = domain;
+        }
+
         // 检查每个标签是否符合长度限制
-        String[] labels = domain.split("\\.");
+        String[] labels = domainPart.split("\\.");
         for (String label : labels) {
             if (label.length() > 63) {
                 System.err.println("Error label provided: " + label);
@@ -131,8 +151,27 @@ public class Main {
             }
         }
 
-        // 使用正则表达式验证
-        return domain.matches(DOMAIN_REGEX);
+        // 使用正则表达式验证域名部分
+        if (!domainPart.matches(DOMAIN_REGEX)) {
+            System.err.println("Invalid domain format: " + domainPart);
+            return false;
+        }
+
+        // 如果有端口号，检查端口号的合法性
+        if (portPart != null) {
+            try {
+                int port = Integer.parseInt(portPart);
+                if (port < 1 || port > 65535) {
+                    System.err.println("Invalid port number: " + port);
+                    return false;
+                }
+            } catch (NumberFormatException e) {
+                System.err.println("Port is not a valid number: " + portPart);
+                return false;
+            }
+        }
+
+        return true;
     }
 
 }
