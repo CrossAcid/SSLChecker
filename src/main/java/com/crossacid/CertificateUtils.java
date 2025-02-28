@@ -224,6 +224,9 @@ public class CertificateUtils {
         }
 
         // 2.ocspUrl即验证的地址
+        if (ocspUrls.isEmpty()) {
+            return "Can't find ocsp URL";
+        }
         String ocspUrl = ocspUrls.get(0);
 
         OCSPResp ocspResponse;
@@ -238,8 +241,19 @@ public class CertificateUtils {
             return "Check failed";
         }
         if (ocspResponse.getStatus() != OCSPResp.SUCCESSFUL) {  //判断此次连接返回的响应结果
-            System.err.println(certificate.getSubjectX500Principal() + ": Failed to get OCSPResponse");
-            return "Check failed";
+            System.err.println(certificate.getSubjectX500Principal() + " Failed to get OCSPResponse");
+            if (ocspResponse.getStatus() == 6) {
+                return "UNAUTHORIZED";
+            } else if (ocspResponse.getStatus() == 5) {
+                return "SIG_REQUIRED";
+            } else if (ocspResponse.getStatus() == 3) {
+                return "TRY_LATER";
+            } else if (ocspResponse.getStatus() == 2) {
+                return "INTERNAL_ERROR";
+            } else if (ocspResponse.getStatus() == 1) {
+                return "MALFORMED_REQUEST";
+            }
+            return "check failed";
         }
         BasicOCSPResp basicResponse;  //获取到BasicOCSPResp
         try {
