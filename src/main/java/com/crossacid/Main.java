@@ -16,7 +16,7 @@ public class Main {
     // 域名合规性检测
     private static final String DOMAIN_REGEX = "^(?=^.{3,255}$)[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+$";
 
-    public static void main(String[] args) throws ParseException, InterruptedException {
+    public static void main(String[] args) throws InterruptedException {
         // 记录初始时间和内存
         long startTime = System.currentTimeMillis();
 
