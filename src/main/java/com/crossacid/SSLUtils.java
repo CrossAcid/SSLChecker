@@ -57,7 +57,7 @@ public class SSLUtils {
 
             socket.close();
         } catch (NoSuchAlgorithmException | IOException | KeyManagementException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException(domain + ": " + e.getMessage());
         }
         return serverCertificates;
     }

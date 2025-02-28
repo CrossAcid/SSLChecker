@@ -6,15 +6,20 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.security.Security;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Main {
 
     // 域名合规性检测
-    private static final String DOMAIN_REGEX = "^(?!-)([A-Za-z0-9-]{1,63})(?<!-)(\\.[A-Za-z0-9-]{1,63})*$";
+    private static final String DOMAIN_REGEX = "^(?=^.{3,255}$)[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+$";
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws ParseException, InterruptedException {
+        // 记录初始时间和内存
+        long startTime = System.currentTimeMillis();
+
         // 设置命令行参数
         Options options = new Options();
         options.addOption("o", "output", true, "Output file path");
@@ -23,6 +28,12 @@ public class Main {
 
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
+
+        String[] domains = new String[0];
+        boolean outputFlg = false;
+        boolean suggestions = false;
+        String outputPath = "";
+        int taskCount;
 
         try {
             // 将参数转化为cmd进行解析
@@ -38,33 +49,66 @@ public class Main {
             if (cmd.getArgList().isEmpty()) {
                 throw new ParseException("No domain names provided.");
             }
-            String[] domains = cmd.getArgList().get(0).split(",");
 
-            // 检测域名是否合规
-            for (String domain : domains) {
-                if (!isValidDomain(domain)) {
-                    throw new ParseException("Error domain provided: " + domain);
-                }
-            }
+            // 获取域名
+            domains = cmd.getArgList().get(0).split(",");
 
             // 是否需要输出到文件中
-            String outputPath = cmd.getOptionValue("o");
-            boolean outputFlg = outputPath != null && !outputPath.isEmpty();
-            // writer =
+            outputPath = cmd.getOptionValue("o");
+            outputFlg = outputPath != null && !outputPath.isEmpty();
 
             // 是否需要给出建议
-            boolean suggestions = cmd.hasOption("s");
+            suggestions = cmd.hasOption("s");
+        } catch (ParseException e) {
+            System.err.println(e.getMessage());
+            formatter.printHelp("java -jar SSLChecker.jar example.com [opts]", options);
+        }
 
-            // 使用ExecutorService来执行并行任务
-            ExecutorService executorService = Executors.newCachedThreadPool();
+        // 去重
+        Set<String> uniqueDomains = new HashSet<>(Arrays.asList(domains));
+        domains = uniqueDomains.toArray(new String[0]);
 
-            // 初始化检测配置
-            initConfigurations();
+        // 存储无效域名
+        List<String> invalidDomains = new ArrayList<>();
 
-            // 对每个域名进行检测
-            for (String domain : domains) {
-                // 最终是否需要写入文件
-                executorService.execute(() -> {
+        // 检测域名是否合规
+        List<String> validDomains = new ArrayList<>();
+        for (String domain : domains) {
+            if (isValidDomain(domain)) {
+                validDomains.add(domain);
+            } else {
+                invalidDomains.add(domain);
+            }
+        }
+
+        // 只保留有效的域名
+        domains = validDomains.toArray(new String[0]);
+        taskCount = domains.length;
+
+        // 如果有无效的域名，统一抛出异常
+        if (!invalidDomains.isEmpty()) {
+            System.err.println("Warning: Some domains are invalid and will be skipped: " + invalidDomains);
+        }
+
+        if (taskCount == 0) {
+            return;
+        }
+
+        // 使用ExecutorService来执行并行任务
+        ExecutorService executorService = Executors.newFixedThreadPool(taskCount);
+        CountDownLatch latch = new CountDownLatch(taskCount);
+
+        // 初始化检测配置
+        initConfigurations();
+
+        // 对每个域名进行检测
+        for (String domain : domains) {
+            // 最终是否需要写入文件
+            boolean finalSuggestions = suggestions;
+            boolean finalOutputFlg = outputFlg;
+            String finalOutputPath = outputPath;
+            executorService.execute(() -> {
+                try {
                     // 执行检测
                     SSLChecker sslChecker = new SSLChecker();
                     String domainPart;
@@ -76,11 +120,11 @@ public class Main {
                     } else {
                         domainPart = domain;
                     }
-                    String result = sslChecker.check(domainPart, Integer.parseInt(portPart), suggestions);
-                    if (outputFlg) {
+                    String result = sslChecker.check(domainPart, Integer.parseInt(portPart), finalSuggestions);
+                    if (finalOutputFlg) {
                         BufferedWriter finalWriter;
                         try {
-                            finalWriter = new BufferedWriter(new FileWriter(outputPath +  "\\" +domain + ".txt"));
+                            finalWriter = new BufferedWriter(new FileWriter(finalOutputPath +  "\\" + domainPart + "-" + portPart + ".txt"));
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
@@ -96,13 +140,25 @@ public class Main {
                     } else {
                         System.out.println(result);
                     }
-                });
-            }
-            executorService.shutdown();
-        } catch (ParseException e) {
-            System.err.println(e.getMessage());
-            formatter.printHelp("java -jar SSLChecker.jar example.com [opts]", options);
+                } finally {
+                    latch.countDown();
+                }
+
+            });
         }
+
+        // 等待所有任务完成
+        latch.await();
+
+        // 记录结束时间和内存占用
+        long endTime = System.currentTimeMillis();
+
+        // 计算总运行时间和内存占用
+        long totalTime = endTime - startTime;
+
+        System.out.println("总运行时间: " + totalTime + " 毫秒");
+
+        executorService.shutdown();
     }
 
     /**
@@ -170,8 +226,6 @@ public class Main {
                 return false;
             }
         }
-
         return true;
     }
-
 }
