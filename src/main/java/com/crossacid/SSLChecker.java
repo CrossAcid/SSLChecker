@@ -502,7 +502,7 @@ public class SSLChecker {
         result.append(TAB).append("是否符合PCI DSS:").append(checkResult.isConformToPCIDSS()).append("\n");
 
         generateScore();
-        result.append(TAB).append("评级: ").append(score).append(" ");
+        result.append(TAB).append("评级: ");
         if (critical.equals("T")) {
             result.append("T").append("\n");
         } else {
