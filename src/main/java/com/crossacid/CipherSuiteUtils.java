@@ -24,27 +24,6 @@ public class CipherSuiteUtils {
 
     /**
      *
-     * @param protocol SSLv3,TLSv1,TLSv1.1 ... 中的一个
-     * @param sslEnabledProtocols 启动的protocol
-     * @param sslCipherSuites 启动的密码套件
-     * @param rand 随机数
-     * @param trustManagers 信任管理器
-     * @param keyManagers 密钥管理器
-     * @return 自定义getSSLSocketFactory
-     * @throws NoSuchAlgorithmException NoSuchAlgorithmException
-     * @throws KeyManagementException KeyManagementException
-     */
-    public static SSLSocketFactory getSSLSocketFactory(String protocol, String[] sslEnabledProtocols, String[] sslCipherSuites, SecureRandom rand, TrustManager[] trustManagers, KeyManager[] keyManagers) throws NoSuchAlgorithmException, KeyManagementException {
-        SSLContext sslContext = SSLContext.getInstance(protocol);
-        sslContext.init(keyManagers, trustManagers, rand);
-        SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
-        if (null != sslEnabledProtocols || null != sslCipherSuites)
-            sslSocketFactory = new SSLUtils.CustomSSLSocketFactory(sslSocketFactory, sslEnabledProtocols, sslCipherSuites);
-        return sslSocketFactory;
-    }
-
-    /**
-     *
      * @param protocol 使用的SSL协议
      * @param cipherSuite 密码套件
      * @return 密码套件分数

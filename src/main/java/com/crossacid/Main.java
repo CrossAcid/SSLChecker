@@ -17,7 +17,7 @@ public class Main {
     private static final String DOMAIN_REGEX = "^(?=^.{3,255}$)[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+$";
 
     public static void main(String[] args) throws InterruptedException {
-        // 记录初始时间和内存
+        // 记录初始时间
         long startTime = System.currentTimeMillis();
 
         // 设置命令行参数
@@ -138,7 +138,12 @@ public class Main {
                             System.err.println("Error writing to file: " + e.getMessage());
                         }
                     } else {
+                        int totalLength = 80;
+                        int equalSignLength = (totalLength - domainPart.length()) / 2;
+                        System.out.println(domainPart + "检测完成");
+                        System.out.println("=".repeat(equalSignLength) + domainPart + "=".repeat(equalSignLength));
                         System.out.println(result);
+                        System.out.println("=".repeat(totalLength));
                     }
                 } finally {
                     latch.countDown();

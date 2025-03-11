@@ -10,6 +10,7 @@ import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 
 import javax.crypto.interfaces.DHPublicKey;
+import javax.net.ssl.*;
 import java.io.*;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
@@ -22,16 +23,51 @@ import java.security.cert.X509Certificate;
 import java.security.interfaces.DSAPublicKey;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class CertificateUtils {
 
+    /**
+     * 检测是否支持SNI连接
+     * @param domain 域名
+     * @param port 端口号
+     */
+    public static CheckResult SNICheck(String domain, int port) {
+        SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+        CheckResult checkResult = new CheckResult();
+        try {
+            SSLSocket socket = (SSLSocket) factory.createSocket(domain, port);
 
+            // 尝试SNI连接
+            try {
+                SSLParameters sslParameters = socket.getSSLParameters();
+                sslParameters.setServerNames(Collections.singletonList(new SNIHostName(domain)));
+                socket.setSSLParameters(sslParameters);
+
+                socket.startHandshake();
+                SSLSession sslSession = socket.getSession();
+
+                checkResult.setCertificateChainList(sslSession.getPeerCertificates());
+                checkResult.setSupportSNIDesc(true);
+            } catch (SSLHandshakeException e) {
+                checkResult.setSupportSNIDesc(false);
+                socket = (SSLSocket) factory.createSocket(domain, port);
+                // 发起不带 SNI 的握手
+                socket.startHandshake();
+                SSLSession sslSession = socket.getSession();
+
+                checkResult.setCertificateChainList(sslSession.getPeerCertificates());
+            } finally {
+                socket.close();
+            }
+        } catch (IOException e) {
+            System.out.println(domain + " Default check failed, retrying with custom trust manager");
+            checkResult.setCertificateChainList(SSLUtils.getCertificatesWithoutValidation(domain, port));
+        }
+        return checkResult;
+    }
 
     /**
      *
@@ -193,7 +229,7 @@ public class CertificateUtils {
     }
 
     /**
-     * @param certificate     证书
+     * @param certificate 证书
      * @param issuerCertificate 颁发证书者
      * @return 证书吊销状态
      * @description 根据OCSP验证证书是否吊销
@@ -289,7 +325,7 @@ public class CertificateUtils {
      * @param ocspUrl OCSP请求URL
      * @return OCSP响应
      */
-    public static OCSPResp getOcspResponse(X509Certificate certificate, X509Certificate issuerCertificate, String ocspUrl) throws IOException {
+    private static OCSPResp getOcspResponse(X509Certificate certificate, X509Certificate issuerCertificate, String ocspUrl) throws IOException {
         if (certificate == null || issuerCertificate == null) {
             return null;
         }
@@ -304,30 +340,6 @@ public class CertificateUtils {
         // Get Response
         InputStream in = (InputStream) con.getContent();
         return new OCSPResp(Utils.inputStreamToArray(in));
-    }
-
-    /**
-     *
-     * @param ocspUrl ocspUrl
-     * @param request ocsp request
-     * @return HttpURLConnection
-     * @throws IOException IOException
-     */
-    private static HttpURLConnection getHttpURLOCSPConnection(String ocspUrl, OCSPReq request) throws IOException {
-        byte[] array = request.getEncoded();
-        URL url = new URL(ocspUrl);
-        HttpURLConnection con = (HttpURLConnection) url.openConnection();
-        con.setRequestProperty("Content-Type", "application/ocsp-request");
-        con.setRequestProperty("Accept", "application/ocsp-response");
-        con.setDoOutput(true);
-        con.setConnectTimeout(3000);
-        con.setReadTimeout(5000);
-        try (OutputStream out = con.getOutputStream()) {
-            DataOutputStream dataOut = new DataOutputStream(new BufferedOutputStream(out));
-            dataOut.write(array);
-            dataOut.flush();
-        }
-        return con;
     }
 
     /**
@@ -365,4 +377,30 @@ public class CertificateUtils {
             throw new RuntimeException(e);
         }
     }
+
+
+    /**
+     *
+     * @param ocspUrl ocspUrl
+     * @param request ocsp request
+     * @return HttpURLConnection
+     * @throws IOException IOException
+     */
+    private static HttpURLConnection getHttpURLOCSPConnection(String ocspUrl, OCSPReq request) throws IOException {
+        byte[] array = request.getEncoded();
+        URL url = new URL(ocspUrl);
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        con.setRequestProperty("Content-Type", "application/ocsp-request");
+        con.setRequestProperty("Accept", "application/ocsp-response");
+        con.setDoOutput(true);
+        con.setConnectTimeout(3000);
+        con.setReadTimeout(5000);
+        try (OutputStream out = con.getOutputStream()) {
+            DataOutputStream dataOut = new DataOutputStream(new BufferedOutputStream(out));
+            dataOut.write(array);
+            dataOut.flush();
+        }
+        return con;
+    }
+
 }

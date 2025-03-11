@@ -14,33 +14,24 @@ public class SSLUtils {
     /**
      *
      * @param address (域名，443)
-     * @param host 检测的域名
      * @param readTimeout 超时
      * @param connectTimeout 连接超时
      * @param sslSocketFactory SSLSocketFactory
      * @return 创建SSLSocket
      * @throws IOException IOException
      */
-    public static SSLSocket createSSLSocket(InetSocketAddress address, String host, int port, int readTimeout, int connectTimeout, SSLSocketFactory sslSocketFactory) throws IOException {
+    public static SSLSocket getCustomSSLSocket(InetSocketAddress address, int readTimeout, int connectTimeout, SSLSocketFactory sslSocketFactory) throws IOException {
         Socket sock = new Socket();
         sock.setSoTimeout(readTimeout);
         sock.connect(address, connectTimeout);
-        return (SSLSocket) sslSocketFactory.createSocket(sock, host, port, true);
+        return (SSLSocket) sslSocketFactory.createSocket(sock, address.getHostName(), address.getPort(), true);
     }
 
     public static Certificate[] getCertificatesWithoutValidation(String domain, int port) {
         X509Certificate[] serverCertificates;
         try {
             SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, new TrustManager[]{
-                    new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
-                    }
-            }, new java.security.SecureRandom());
+            sslContext.init(getKeyManagers(), getCustomTrustManagers(), new java.security.SecureRandom());
             // 获取 SSLSocketFactory
             SSLSocketFactory factory = sslContext.getSocketFactory();
             SSLSocket socket = (SSLSocket) factory.createSocket(domain, port);
@@ -63,6 +54,27 @@ public class SSLUtils {
     }
 
     /**
+     *
+     * @param protocol SSLv3,TLSv1,TLSv1.1 ... 中的一个
+     * @param sslEnabledProtocols 启动的protocol
+     * @param sslCipherSuites 启动的密码套件
+     * @param rand 随机数
+     * @param trustManagers 信任管理器
+     * @param keyManagers 密钥管理器
+     * @return 自定义getSSLSocketFactory
+     * @throws NoSuchAlgorithmException NoSuchAlgorithmException
+     * @throws KeyManagementException KeyManagementException
+     */
+    public static SSLSocketFactory getCustomSSLSocketFactory(String protocol, String[] sslEnabledProtocols, String[] sslCipherSuites, SecureRandom rand, TrustManager[] trustManagers, KeyManager[] keyManagers) throws NoSuchAlgorithmException, KeyManagementException {
+        SSLContext sslContext = SSLContext.getInstance(protocol);
+        sslContext.init(keyManagers, trustManagers, rand);
+        SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+        if (null != sslEnabledProtocols || null != sslCipherSuites)
+            sslSocketFactory = new SSLUtils.CustomSSLSocketFactory(sslSocketFactory, sslEnabledProtocols, sslCipherSuites);
+        return sslSocketFactory;
+    }
+
+    /**
      * 自定义 SSLSocketFactory
      */
     public static class CustomSSLSocketFactory extends javax.net.ssl.SSLSocketFactory {
@@ -71,19 +83,15 @@ public class SSLUtils {
         private final SSLSocketFactory _base;
 
         public CustomSSLSocketFactory(SSLSocketFactory base, String[] sslEnabledProtocols, String[] sslCipherSuites) {
-            _base = base;
-            if (null == sslEnabledProtocols)
-                _sslEnabledProtocols = null;
-            else
-                _sslEnabledProtocols = sslEnabledProtocols.clone();
+            this._base = base;
+            this._sslEnabledProtocols = sslEnabledProtocols != null ?  sslEnabledProtocols.clone() : null;
+
             if (null == sslCipherSuites || 0 == sslCipherSuites.length)
                 _sslCipherSuites = base.getDefaultCipherSuites();
             else if (1 == sslCipherSuites.length && "ALL".equalsIgnoreCase(sslCipherSuites[0]))
                 _sslCipherSuites = base.getSupportedCipherSuites();
             else
                 _sslCipherSuites = sslCipherSuites.clone();
-
-
         }
 
         public String[] getDefaultCipherSuites() {
@@ -96,12 +104,9 @@ public class SSLUtils {
 
         private SSLSocket customize(Socket s) {
             SSLSocket socket = (SSLSocket) s;
-
             if (null != _sslEnabledProtocols)
                 socket.setEnabledProtocols(_sslEnabledProtocols);
-
             socket.setEnabledCipherSuites(_sslCipherSuites);
-
             return socket;
         }
 
@@ -135,32 +140,36 @@ public class SSLUtils {
      * 生成信任管理器
      * @return TrustManager[] 信任管理器数组
      */
-    public static TrustManager[] getTrustManagers(boolean isCustomized) {
-        if (!isCustomized) {
-            TrustManagerFactory trustManagerFactory;
-            try {
-                trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            } catch (NoSuchAlgorithmException e) {
-                System.out.println(e.getMessage());
-                throw new RuntimeException(e);
-            }
-            try {
-                trustManagerFactory.init((KeyStore) null);
-            } catch (KeyStoreException e) {
-                throw new RuntimeException(e);
-            }
-            return trustManagerFactory.getTrustManagers();
-        } else {
-            return new TrustManager[]{
-                    new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
-                    }
-            };
+    public static TrustManager[] getDefaultTrustManagers() {
+        TrustManagerFactory trustManagerFactory;
+        try {
+            trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        } catch (NoSuchAlgorithmException e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException(e);
         }
+        try {
+            trustManagerFactory.init((KeyStore) null);
+        } catch (KeyStoreException e) {
+            throw new RuntimeException(e);
+        }
+        return trustManagerFactory.getTrustManagers();
+    }
+
+    /**
+     * 生成自定义信任管理器
+     * @return TrustManager
+     */
+    public static TrustManager[] getCustomTrustManagers() {
+        return new TrustManager[]{
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return null;
+                    }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                }
+        };
     }
 
     /**
