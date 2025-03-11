@@ -3,9 +3,7 @@ package com.crossacid;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 
-import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManager;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.KeyManagementException;
